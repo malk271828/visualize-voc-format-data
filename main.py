@@ -3,6 +3,8 @@ import argparse
 import random
 from data import Data
 import cv2
+from rich import print
+import numpy as np
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--root_dir", type=str, default="/mnt/069A453E9A452B8D/Ram/surveillance-data/sdd_train")
@@ -13,6 +15,7 @@ parser.add_argument("--save_dir", type=str, default="output")
 parser.add_argument("--line_thickness", type=int, default=1)
 parser.add_argument("--with_mask",action="store_true")
 parser.add_argument("--with_bbox",action="store_true")
+parser.add_argument("--with_bg",action="store_true")
 args = parser.parse_args()
 random.seed(args.random_seed)
 
@@ -27,18 +30,33 @@ def get_image_list(dir, filename):
     return [image_name.strip() for image_name in image_list]
 
 
-def process_image(image_data,with_mask=False,with_bbox=False):
+def process_image(
+        image_data,
+        with_mask=False,
+        with_bbox=False,
+        with_filename=False,
+        with_bg=False,
+        with_text=False
+    ):
     if not os.path.exists(image_data.image_path):
         image_data.image_path=image_data.image_path.replace('jpg','png')
     image = cv2.imread(image_data.image_path)
-    image = cv2.putText(image, image_data.image_name, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
+    if not with_bg:
+        image = np.ones((len(image), len(image[0]), 3), dtype = np.uint8)
+    if with_filename:
+        image = cv2.putText(image, image_data.image_name, (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 2, (255, 255, 255), 2)
     if with_bbox:
         for ann in image_data.annotations:
-            box_color = (0, 255, 0)  #Green
-            if ann.difficult or ann.truncated:
-                box_color = (0, 0, 255) #Red
-            image = cv2.rectangle(image, (ann.xmin, ann.ymin), (ann.xmax, ann.ymax), box_color, args.line_thickness)
-            image = cv2.putText(image, ann.name, (ann.xmin, ann.ymin), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 1)
+            if with_bg:
+                box_color = (0, 255, 0)  #Green
+                if ann.difficult or ann.truncated:
+                    box_color = (0, 0, 255) #Red
+                image = cv2.rectangle(image, (ann.xmin, ann.ymin), (ann.xmax, ann.ymax), box_color, args.line_thickness)
+            else:
+                box_color = (255, 255, 255)
+                image = cv2.rectangle(image, (ann.xmin, ann.ymin), (ann.xmax, ann.ymax), box_color, -1, args.line_thickness)
+            if with_text:
+                image = cv2.putText(image, ann.name, (ann.xmin, ann.ymin), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 1)
     if with_mask:
         if os.path.exists(image_data.mask_path):
             mask_img=cv2.imread(image_data.mask_path)
@@ -53,7 +71,7 @@ def main(args):
     index = random.randint(0, total_images)
     while True:
         image_data = Data(args.root_dir, image_list[index])
-        image = process_image(image_data,args.with_mask,args.with_bbox)
+        image = process_image(image_data,args.with_mask,args.with_bbox, with_filename=False, with_bg=args.with_bg)
         if args.save_images:
             cv2.imwrite(os.path.join(args.save_dir, image_list[index] + ".jpg"), image)
         cv2.imshow('image', image)
